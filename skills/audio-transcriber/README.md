@@ -34,7 +34,7 @@
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini API 金鑰，用來呼叫語音辨識服務 |
 
-請跟課程助教取得 API Key，或到 [Google AI Studio](https://aistudio.google.com/) 自行申請。
+請到 [Google AI Studio](https://aistudio.google.com/) 自行申請。
 
 ## 💬 提示詞範例
 

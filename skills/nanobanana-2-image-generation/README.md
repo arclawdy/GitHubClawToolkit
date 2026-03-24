@@ -31,9 +31,6 @@
 | 設定項目 | 說明 |
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini 的 API 金鑰（**必填**） |
-| `NANOBANANA_GEMINI_API_KEY` | 也可以用這個名稱，效果一樣 |
-
-請向講師取得 API 金鑰，或到 [Google AI Studio](https://aistudio.google.com/) 自行申請。
 
 ## 💬 提示詞範例
 

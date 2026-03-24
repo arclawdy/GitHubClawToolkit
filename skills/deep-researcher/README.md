@@ -28,14 +28,13 @@
 
 ## ⚙️ 需要的設定
 
-使用前需要設定以下 API Key（擇一即可）：
+使用前需要設定以下 API Key：
 
 | 名稱 | 說明 |
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini API 金鑰 |
-| `GOOGLE_API_KEY` | 也接受 Google API 金鑰（效果相同） |
 
-請跟課程助教取得 API Key，或到 [Google AI Studio](https://aistudio.google.com/) 自行申請。
+請到 [Google AI Studio](https://aistudio.google.com/) 自行申請。
 
 ## 💬 提示詞範例
 

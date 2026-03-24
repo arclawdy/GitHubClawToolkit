@@ -32,8 +32,6 @@
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini API 金鑰，摘要功能的核心引擎 |
 
-> 💡 到 [Google AI Studio](https://aistudio.google.com/apikey) 免費申請 API key，把它設定到你的小龍蝦環境變數就可以了！
-
 ## 💬 提示詞範例
 
 ```text

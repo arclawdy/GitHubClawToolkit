@@ -32,8 +32,6 @@
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini 的 API 金鑰（**必填**） |
 
-請向講師取得 API 金鑰，或到 [Google AI Studio](https://aistudio.google.com/) 自行申請。
-
 ## 💬 提示詞範例
 
 以下是你可以直接複製貼上給小龍蝦的提示詞：
