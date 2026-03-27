@@ -1,0 +1,78 @@
+name: Prepare Issue Workspace
+description: >
+  Checkout or create the issue branch (rebasing onto main when the branch already
+  exists) and export the workspace paths used by subsequent steps.
+
+inputs:
+  issue_number:
+    description: Issue number
+    required: true
+  push_token:
+    description: Token used for git fetch / push
+    required: true
+  git_user_name:
+    description: Git commit author name
+    required: true
+  git_user_email:
+    description: Git commit author email
+    required: true
+  github_repository:
+    description: "Repository in owner/repo format"
+    required: true
+
+outputs:
+  branch_name:
+    description: Name of the issue branch
+    value: ${{ steps.prep.outputs.branch_name }}
+  issue_dir:
+    description: Workspace directory for this issue
+    value: ${{ steps.prep.outputs.issue_dir }}
+  prompt_file:
+    description: Path to the issue prompt file
+    value: ${{ steps.prep.outputs.prompt_file }}
+  result_file:
+    description: Path to the agent result file
+    value: ${{ steps.prep.outputs.result_file }}
+  log_file:
+    description: Path to the agent execution log file
+    value: ${{ steps.prep.outputs.log_file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare workspace
+      id: prep
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.push_token }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
+        PUSH_TOKEN: ${{ inputs.push_token }}
+        AUTOMATION_GIT_USER_NAME: ${{ inputs.git_user_name }}
+        AUTOMATION_GIT_USER_EMAIL: ${{ inputs.git_user_email }}
+        GITHUB_REPOSITORY: ${{ inputs.github_repository }}
+      run: |
+        set -euo pipefail
+
+        branch_name="issue-${ISSUE_NUMBER}"
+        issue_dir="workspaces/issue-${ISSUE_NUMBER}"
+        prompt_file="${issue_dir}/issue.md"
+
+        git config user.name "${AUTOMATION_GIT_USER_NAME}"
+        git config user.email "${AUTOMATION_GIT_USER_EMAIL}"
+        git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+        git fetch --no-tags origin "${branch_name}" || true
+
+        if git show-ref --verify --quiet "refs/remotes/origin/${branch_name}"; then
+          git checkout -B "${branch_name}" "origin/${branch_name}"
+        else
+          git checkout -B "${branch_name}" origin/main
+        fi
+
+        {
+          echo "branch_name=${branch_name}"
+          echo "issue_dir=${issue_dir}"
+          echo "prompt_file=${prompt_file}"
+          echo "result_file=${issue_dir}/result.txt"
+          echo "log_file=${issue_dir}/copilot-exec-log.json"
+        } >> "$GITHUB_OUTPUT"

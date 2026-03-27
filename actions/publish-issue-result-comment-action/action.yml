@@ -1,0 +1,75 @@
+name: Publish Result Comment
+description: >
+  回寫最終結果到進度留言。不管成功或失敗都執行：
+  有 result_file 就貼檔案內容，否則組 fallback 失敗摘要。
+
+inputs:
+  comment_id:
+    description: 要更新的 GitHub issue comment ID
+    required: true
+  result_file:
+    description: 結果檔路徑（可能不存在或為空）
+    required: true
+  token:
+    description: GitHub token（需有 issues:write 權限）
+    required: true
+  repository:
+    description: 'owner/repo 格式的倉庫名稱'
+    required: true
+  run_id:
+    description: GitHub run ID（用於 fallback 失敗訊息）
+    required: true
+  server_url:
+    description: GitHub server URL（用於 fallback 失敗訊息）
+    required: true
+  brain_meta:
+    description: BRAIN_META marker（附加在 fallback 失敗訊息末尾）
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Patch comment with final result
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        COMMENT_ID: ${{ inputs.comment_id }}
+        RESULT_FILE: ${{ inputs.result_file }}
+        REPOSITORY: ${{ inputs.repository }}
+        RUN_ID: ${{ inputs.run_id }}
+        SERVER_URL: ${{ inputs.server_url }}
+        BRAIN_META: ${{ inputs.brain_meta }}
+      run: |
+        set -euo pipefail
+        sleep 5  # 等待前一步驟的 image URL rewrite 完成
+
+        # 決定 body 來源：有結果檔就用，否則組 fallback 失敗摘要。
+        if [[ -f "${RESULT_FILE}" && -s "${RESULT_FILE}" ]]; then
+          _body="$(cat "${RESULT_FILE}")"
+        else
+          _body="$(printf '❌ 執行失敗（run_id=%s）。請查看 workflow 執行記錄：%s/%s/actions/runs/%s。\n\n%s' \
+            "${RUN_ID}" "${SERVER_URL}" "${REPOSITORY}" "${RUN_ID}" "${BRAIN_META}")"
+        fi
+
+        body_file="${RUNNER_TEMP}/publish-result-comment-body-$$.json"
+
+        # inline build-comment-body-json：透過 env var 傳遞避免換行跳脫問題。
+        _BODY="${_body}" node -e "process.stdout.write(JSON.stringify({body: process.env._BODY}))" > "${body_file}"
+
+        # inline gh-api-with-retry：最多 5 次，間隔 6 秒。
+        attempt=1; max_attempts=5; exit_code=0
+        while true; do
+          if gh api --method PATCH \
+               -H 'Accept: application/vnd.github+json' \
+               "/repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" \
+               --input "${body_file}" >/dev/null; then
+            rm -f "${body_file}"; exit 0
+          else
+            exit_code=$?
+          fi
+          if (( attempt >= max_attempts )); then
+            rm -f "${body_file}"; exit "${exit_code}"
+          fi
+          echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
+          sleep 6; attempt=$(( attempt + 1 ))
+        done

@@ -1,0 +1,129 @@
+name: 'Run Coding Agent'
+description: 'Runs the GitHub Copilot coding agent for an issue workspace'
+
+inputs:
+  issue_dir:
+    description: 'Issue workspace directory (e.g. workspaces/issue-123)'
+    required: true
+  result_file:
+    description: 'Result output file path'
+    required: true
+  log_file:
+    description: 'Copilot CLI execution log path'
+    required: true
+  copilot_github_token:
+    description: 'GitHub token for copilot CLI'
+    required: true
+  brain_meta:
+    description: 'BRAIN_META marker string'
+    required: true
+  github_repository:
+    description: 'owner/repo'
+    required: true
+  gemini_api_key:
+    description: 'Gemini API key'
+    required: false
+    default: ''
+  felo_api_key:
+    description: 'Felo API key'
+    required: false
+    default: ''
+  tavily_api_key:
+    description: 'Tavily API key'
+    required: false
+    default: ''
+  copilot_home:
+    description: 'Copilot home directory'
+    required: false
+    default: '.copilot'
+  agent_browser_state:
+    description: 'Browser state file'
+    required: false
+    default: 'auth.json'
+
+outputs:
+  status:
+    description: 'Exit code from copilot CLI (0=success, non-zero=failure)'
+    value: ${{ steps.run.outputs.status }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.copilot_github_token }}
+        GITHUB_TOKEN: ${{ inputs.copilot_github_token }}
+        COPILOT_GITHUB_TOKEN: ${{ inputs.copilot_github_token }}
+        ISSUE_DIR: ${{ inputs.issue_dir }}
+        RESULT_FILE: ${{ inputs.result_file }}
+        LOG_FILE: ${{ inputs.log_file }}
+        BRAIN_META: ${{ inputs.brain_meta }}
+        GITHUB_REPOSITORY: ${{ inputs.github_repository }}
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        NANOBANANA_GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        FELO_API_KEY: ${{ inputs.felo_api_key }}
+        TAVILY_API_KEY: ${{ inputs.tavily_api_key }}
+        COPILOT_HOME: ${{ inputs.copilot_home }}
+        AGENT_BROWSER_STATE: ${{ inputs.agent_browser_state }}
+      run: |
+        set -euo pipefail
+
+        status=0
+        # 確保結果檔所在目錄已存在。
+        mkdir -p "$(dirname "${RESULT_FILE}")"
+
+        # 每次執行前先清空輸出檔，避免沿用上一次 run 的內容。
+        : > "${RESULT_FILE}"
+        : > "${LOG_FILE}"
+
+        # 若 issue workspace 內有使用者自行安裝的 skills，先複製到 repo-root .agents/skills/。
+        # 這是純粹的 runner 本機操作，不會 git add/commit，因此不會進入 issue branch。
+        if [[ -d "${ISSUE_DIR}/.agents/skills" ]]; then
+          for _skill_src in "${ISSUE_DIR}/.agents/skills/"/*/; do
+            [[ -d "${_skill_src}" ]] && cp -r "${_skill_src}" .agents/skills/
+          done
+          unset _skill_src
+        fi
+
+        # 暫時關掉 errexit，這樣即使 copilot CLI 失敗也能手動抓到 exit code。
+        set +e
+        (
+          cd "${ISSUE_DIR}"
+          # 若目前工作目錄有 .env，就在不執行檔案內容的前提下把變數載入這個子殼層。
+          if [[ -f .env ]]; then
+            echo "::notice::Loading environment variables from ${ISSUE_DIR}/.env for Copilot CLI"
+            while IFS= read -r -d '' _env_key && IFS= read -r -d '' _env_value; do
+              export "${_env_key}=${_env_value}"
+            done < <(node "${{ github.action_path }}/scripts/parse-dotenv-null.mjs" .env)
+            unset _env_key _env_value
+          fi
+          prompt="$(cat issue.md)"
+          # 以 workflow 既有旗標呼叫 copilot CLI，並把 JSON 輸出同步寫進 log 檔。
+          copilot -p "${prompt}" --yolo --output-format json --stream off \
+            | tee "$(basename "${LOG_FILE}")" \
+            | jq
+        )
+        status=${PIPESTATUS[0]}
+        set -e
+
+        # 若輸出看起來是認證失敗，就補上一段排錯說明，方便使用者自行檢查 token。
+        if grep -Eq 'No authentication information found|Authentication failed' "${RESULT_FILE}" 2>/dev/null; then
+          printf '\n## Authentication Help\n\n' >> "${RESULT_FILE}"
+          printf -- '- `coding-agent.yml` 會使用 `GH_CODESPACE_TOKEN`（若未設定則 fallback 到 `GH_ISSUES_TOKEN`）作為 `copilot` CLI 的 GitHub 驗證 token。\n' >> "${RESULT_FILE}"
+          printf -- '- 若你使用 fine-grained PAT，請確認它對目標 repo 有存取權，並額外開啟 **Copilot Requests** 權限。\n' >> "${RESULT_FILE}"
+          printf -- '- 若你使用 classic PAT，請確認這個 GitHub 帳號本身可使用 GitHub Copilot，且 token 尚未過期。\n' >> "${RESULT_FILE}"
+        fi
+
+        # 確保輸出中一定帶有 BRAIN_META，方便後續系統辨識來源。
+        if grep -Fq "${BRAIN_META}" "${RESULT_FILE}" 2>/dev/null; then
+          true
+        elif [[ -s "${RESULT_FILE}" ]]; then
+          printf '\n\n%s\n' "${BRAIN_META}" >> "${RESULT_FILE}"
+        else
+          printf '%s\n' "${BRAIN_META}" > "${RESULT_FILE}"
+        fi
+
+        # 把 copilot CLI 的 exit code 傳給後續 step 與整個 workflow。
+        echo "status=${status}" >> "$GITHUB_OUTPUT"
+        exit "${status}"

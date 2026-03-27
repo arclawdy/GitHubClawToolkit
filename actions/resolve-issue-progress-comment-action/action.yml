@@ -1,0 +1,84 @@
+name: Resolve Progress Comment
+description: 若已知 comment id 則沿用；否則在 issue 上建立一則新的進度留言。
+
+inputs:
+  issue_number:
+    required: true
+  progress_comment_id:
+    required: false
+    default: ''
+  token:
+    required: true
+  repository:
+    required: true
+  run_id:
+    required: true
+  brain_meta:
+    required: true
+
+outputs:
+  comment_id:
+    description: 建立或沿用的 comment ID
+    value: ${{ steps.resolve.outputs.comment_id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve or create progress comment
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PROGRESS_COMMENT_ID: ${{ inputs.progress_comment_id }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
+        REPOSITORY: ${{ inputs.repository }}
+        RUN_ID: ${{ inputs.run_id }}
+        BRAIN_META: ${{ inputs.brain_meta }}
+      run: |
+        set -euo pipefail
+
+        # 已知 comment id 時不重建，直接沿用。
+        if [[ -n "${PROGRESS_COMMENT_ID}" ]]; then
+          echo "comment_id=${PROGRESS_COMMENT_ID}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        comment_body="$(printf '🤖 任務已承接，正在準備執行環境...\n\n- run_id: `%s`\n\n%s' \
+          "${RUN_ID}" "${BRAIN_META}")"
+
+        # 把 body 序列化為 JSON 避免多行字串在 -f 參數中出錯。
+        body_file="progress-comment-body-$$.json"
+        _BODY="${comment_body}" node -e \
+          "process.stdout.write(JSON.stringify({body: process.env._BODY}))" \
+          > "${body_file}"
+
+        # Inline retry loop（最多 5 次）。
+        attempt=1; exit_code=0; max_attempts=5
+        while true; do
+          if response="$(gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/comments" \
+            --input "${body_file}")"; then
+            break
+          else
+            exit_code=$?
+          fi
+          if (( attempt >= max_attempts )); then
+            rm -f "${body_file}"
+            exit "${exit_code}"
+          fi
+          echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
+          sleep 6
+          attempt=$(( attempt + 1 ))
+        done
+
+        rm -f "${body_file}"
+
+        comment_id="$(printf '%s' "${response}" | jq -r '.id')"
+        if [[ -z "${comment_id}" || "${comment_id}" == "null" ]]; then
+          echo "::error::Failed to create progress comment"
+          exit 1
+        fi
+
+        echo "comment_id=${comment_id}" >> "$GITHUB_OUTPUT"

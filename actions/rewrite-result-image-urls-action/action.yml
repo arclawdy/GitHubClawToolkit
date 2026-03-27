@@ -1,0 +1,31 @@
+name: Rewrite Image URLs
+description: Rewrites relative image paths in a result file to absolute GitHub blob URLs.
+
+inputs:
+  result_file:
+    description: Path to the result file
+    required: true
+  repository:
+    description: Repository in owner/repo format
+    required: true
+  branch_name:
+    description: Branch name for constructing blob URLs
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Rewrite image URLs
+      shell: bash
+      env:
+        RESULT_FILE: ${{ inputs.result_file }}
+        REPOSITORY: ${{ inputs.repository }}
+        BRANCH_NAME: ${{ inputs.branch_name }}
+      run: |
+        set -euo pipefail
+        if [[ -s "${RESULT_FILE}" ]]; then
+          node "${{ github.action_path }}/scripts/rewrite-image-urls.mjs" \
+            "${RESULT_FILE}" \
+            "${REPOSITORY}" \
+            "${BRANCH_NAME}"
+        fi

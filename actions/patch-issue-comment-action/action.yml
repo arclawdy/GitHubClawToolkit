@@ -1,0 +1,63 @@
+name: Update Issue Comment
+description: PATCH a GitHub issue comment with retry logic (no external script dependencies).
+
+inputs:
+  comment_id:
+    description: The numeric ID of the comment to PATCH.
+    required: true
+  body:
+    description: Plain-text body of the comment (newlines allowed).
+    required: true
+  repository:
+    description: Repository in "owner/repo" format.
+    required: true
+  token:
+    description: GitHub token used to authenticate the PATCH request.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Patch comment with retry
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        _BODY: ${{ inputs.body }}
+        _COMMENT_ID: ${{ inputs.comment_id }}
+        _REPOSITORY: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+
+        body_file="${RUNNER_TEMP}/update-issue-comment-body-$$.json"
+
+        # Build the JSON payload via Node, reading body from env to safely handle
+        # newlines, Unicode, and shell-special characters without any escaping.
+        node -e "process.stdout.write(JSON.stringify({body: process.env._BODY}))" \
+          > "${body_file}"
+
+        # PATCH with retry (up to 5 attempts, 6-second back-off).
+        attempt=1
+        max_attempts=5
+        exit_code=0
+
+        while true; do
+          if gh api \
+               --method PATCH \
+               -H 'Accept: application/vnd.github+json' \
+               "/repos/${_REPOSITORY}/issues/comments/${_COMMENT_ID}" \
+               --input "${body_file}" >/dev/null; then
+            rm -f "${body_file}"
+            exit 0
+          else
+            exit_code=$?
+          fi
+
+          if (( attempt >= max_attempts )); then
+            rm -f "${body_file}"
+            exit "${exit_code}"
+          fi
+
+          echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
+          sleep 6
+          attempt=$(( attempt + 1 ))
+        done
