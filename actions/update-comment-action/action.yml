@@ -57,7 +57,7 @@ runs:
         attempt=1; exit_code=0; max_attempts=5
         while true; do
           if response="$(gh api \
-            --method POST \
+            --method PATCH \
             -H 'Accept: application/vnd.github+json' \
             "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/comments/${COMMENT_ID}" \
             --input "${message_file}")"; then
