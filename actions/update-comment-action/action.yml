@@ -5,28 +5,17 @@ inputs:
   issue_number:
     description: 目標 Issue 編號
     required: true
-  progress_comment_id:
+  comment_id:
     description: 已存在的進度留言 ID；若提供則直接沿用，不重新建立
     required: false
     default: ''
-  token:
-    description: 用於呼叫 GitHub API 的存取權杖
-    required: true
-  repository:
-    description: 目標儲存庫，格式為 owner/repo
-    required: true
-  run_id:
-    description: 當前 workflow run 的 ID
+  message:
+    description: 留言的純文字內容（允許換行）。
     required: true
   brain_meta:
     description: 附加於進度留言的 brain metadata 字串
     required: false
     default: '<!-- githubclaw-brain-result: {"source":"githubclaw-worker-brain"} -->'
-
-outputs:
-  comment_id:
-    description: 建立或沿用的 comment ID
-    value: ${{ steps.resolve.outputs.comment_id }}
 
 runs:
   using: composite
@@ -35,29 +24,20 @@ runs:
       id: resolve
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.token }}
-        PROGRESS_COMMENT_ID: ${{ inputs.progress_comment_id }}
         ISSUE_NUMBER: ${{ inputs.issue_number }}
-        REPOSITORY: ${{ inputs.repository }}
-        RUN_ID: ${{ inputs.run_id }}
+        COMMENT_ID: ${{ inputs.comment_id }}
+        MESSAGE: ${{ inputs.message }}
+        REPOSITORY: ${{ github.repository }}
         BRAIN_META: ${{ inputs.brain_meta }}
       run: |
         set -euo pipefail
 
-        # 已知 comment id 時直接沿用，不重新建立。
-        if [[ -n "${PROGRESS_COMMENT_ID}" ]]; then
-          echo "comment_id=${PROGRESS_COMMENT_ID}" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+        message_file="${RUNNER_TEMP}/update-issue-comment-body-$$.json"
 
-        comment_body="$(printf '🤖 任務已承接，正在準備執行環境...\n\n- run_id: `%s`\n\n%s' \
-          "${RUN_ID}" "${BRAIN_META}")"
-
-        # 將 body 序列化為 JSON，避免多行字串在 --input 參數中出錯。
-        body_file="progress-comment-body-$$.json"
-        _BODY="${comment_body}" node -e \
-          "process.stdout.write(JSON.stringify({body: process.env._BODY}))" \
-          > "${body_file}"
+        # 透過 Node.js 從環境變數讀取 message 並序列化為 JSON，
+        # 以安全處理換行、Unicode 及 shell 特殊字元。
+        node -e "process.stdout.write(JSON.stringify({body: process.env.MESSAGE, brain_meta: process.env.BRAIN_META}))" \
+          > "${message_file}"
 
         # 發送 API 請求，最多重試 5 次。
         attempt=1; exit_code=0; max_attempts=5
@@ -66,13 +46,13 @@ runs:
             --method POST \
             -H 'Accept: application/vnd.github+json' \
             "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/comments" \
-            --input "${body_file}")"; then
+            --input "${message_file}")"; then
             break
           else
             exit_code=$?
           fi
           if (( attempt >= max_attempts )); then
-            rm -f "${body_file}"
+            rm -f "${message_file}"
             exit "${exit_code}"
           fi
           echo "::warning::gh api 失敗（第 ${attempt}/${max_attempts} 次），6 秒後重試..."
@@ -80,7 +60,7 @@ runs:
           attempt=$(( attempt + 1 ))
         done
 
-        rm -f "${body_file}"
+        rm -f "${message_file}"
 
         # gh api 失敗時已由 retry 機制處理，此處直接抽取 id。
         echo "comment_id=$(printf '%s' "${response}" | jq -r '.id')" >> "$GITHUB_OUTPUT"
