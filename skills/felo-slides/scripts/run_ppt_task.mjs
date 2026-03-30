@@ -4,6 +4,8 @@ const DEFAULT_API_BASE = 'https://openapi.felo.ai';
 const DEFAULT_INTERVAL_SEC = 10;
 const DEFAULT_MAX_WAIT_SEC = 1800;
 const DEFAULT_TIMEOUT_SEC = 60;
+const MAX_RETRIES = 2;
+const RETRY_BASE_MS = 1000;
 
 function usage() {
   console.error(
@@ -72,6 +74,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function createError(message, details = {}) {
+  const err = new Error(message);
+  Object.assign(err, details);
+  return err;
+}
+
 function getMessage(payload) {
   return (
     payload?.message ||
@@ -90,28 +98,90 @@ function isApiError(payload) {
   return false;
 }
 
-async function fetchJson(url, init, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    let body = {};
-    try {
-      body = await res.json();
-    } catch {
-      body = {};
-    }
+function isRetryableHttpStatus(status) {
+  return status === 429 || status >= 500;
+}
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${getMessage(body)}`);
+function getRequestId(payload) {
+  return payload?.request_id || payload?.requestId || null;
+}
+
+function formatErrorMessage(prefix, payload) {
+  const parts = [prefix];
+  const code = payload?.code;
+  const requestId = getRequestId(payload);
+  if (code) parts.push(`code=${code}`);
+  if (requestId) parts.push(`request_id=${requestId}`);
+  return parts.join(' | ');
+}
+
+function buildSuccessPayload(taskId, taskStatus, urls, createData, historicalData) {
+  return {
+    task_id: taskId,
+    task_status: taskStatus,
+    ppt_url: urls.pptUrl || null,
+    live_doc_url: urls.liveDocUrl || null,
+    livedoc_short_id:
+      createData.livedoc_short_id ?? historicalData.live_doc_short_id ?? historicalData.livedoc_short_id ?? null,
+    ppt_business_id: createData.ppt_business_id ?? null,
+  };
+}
+
+async function fetchJson(url, init, timeoutMs) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      let body = {};
+      try {
+        body = await res.json();
+      } catch {
+        body = {};
+      }
+
+      if (!res.ok) {
+        const error = createError(
+          formatErrorMessage(`HTTP ${res.status}: ${getMessage(body)}`, body),
+          {
+            httpStatus: res.status,
+            code: body?.code ?? null,
+            requestId: getRequestId(body),
+          }
+        );
+        if (attempt < MAX_RETRIES && isRetryableHttpStatus(res.status)) {
+          lastError = error;
+          await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
+          continue;
+        }
+        throw error;
+      }
+      if (isApiError(body)) {
+        throw createError(formatErrorMessage(getMessage(body), body), {
+          code: body?.code ?? null,
+          requestId: getRequestId(body),
+        });
+      }
+      return body;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        lastError = createError(`Request timed out after ${timeoutMs / 1000}s`);
+      } else {
+        lastError = err;
+      }
+      if (attempt < MAX_RETRIES && (err?.name === 'AbortError' || err instanceof TypeError)) {
+        await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
+        continue;
+      }
+      throw lastError;
+    } finally {
+      clearTimeout(timer);
     }
-    if (isApiError(body)) {
-      throw new Error(getMessage(body));
-    }
-    return body;
-  } finally {
-    clearTimeout(timer);
   }
+
+  throw lastError ?? new Error('Unknown request error');
 }
 
 function extractTaskUrls(historicalData, createData) {
@@ -188,7 +258,7 @@ async function main() {
 
   const createData = await createTask(apiKey, apiBase, args.query, timeoutMs);
   const taskId = createData.task_id;
-  if (args.verbose) {
+  if (args.verbose || args.json) {
     console.error(`Task ID: ${taskId}`);
   }
 
@@ -210,19 +280,13 @@ async function main() {
       if (!urls.displayUrl) {
         throw new Error('Task completed but no ppt_url/live_doc_url is available');
       }
+      const successData = buildSuccessPayload(taskId, taskStatus, urls, createData, historicalData);
       if (args.json) {
         console.log(
           JSON.stringify(
             {
               status: 'ok',
-              data: {
-                task_id: taskId,
-                task_status: taskStatus,
-                ppt_url: urls.pptUrl || null,
-                live_doc_url: urls.liveDocUrl || null,
-                livedoc_short_id: createData.livedoc_short_id ?? historicalData.live_doc_short_id ?? historicalData.livedoc_short_id ?? null,
-                ppt_business_id: createData.ppt_business_id ?? null,
-              },
+              data: successData,
             },
             null,
             2
@@ -235,17 +299,25 @@ async function main() {
     }
 
     if (taskStatus === 'FAILED' || taskStatus === 'ERROR') {
-      throw new Error(`Task finished with status: ${taskStatus}`);
+      const errorMessage = historicalData?.error_message || '';
+      const detail = errorMessage ? `; error_message=${errorMessage}` : '';
+      throw createError(`Task ${taskId} finished with status: ${taskStatus}${detail}`, {
+        taskId,
+        taskStatus,
+        errorMessage,
+      });
     }
 
     await sleep(intervalMs);
   }
 
-  throw new Error(`Timed out after ${args.maxWaitSec}s. Last status: ${lastStatus || 'UNKNOWN'}`);
+  throw createError(`Timed out after ${args.maxWaitSec}s. Last status: ${lastStatus || 'UNKNOWN'}`, {
+    taskId,
+    taskStatus: lastStatus || 'UNKNOWN',
+  });
 }
 
 main().catch((err) => {
   console.error(`ERROR: ${err?.message || err}`);
   process.exit(1);
 });
-

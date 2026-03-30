@@ -67,14 +67,16 @@ If key is missing, stop and return setup instructions.
 
 ### Step 2: Run Node Script (create + poll)
 
-Use the bundled script (no `jq` dependency):
+Use the bundled script (no `jq` dependency). To reduce black-box waiting and make task progress easier to track, prefer `--json --verbose` as the default mode:
 
 ```bash
 node .agents/skills/felo-slides/scripts/run_ppt_task.mjs \
   --query "USER_PROMPT_HERE" \
   --interval 10 \
   --max-wait 1800 \
-  --timeout 60
+  --timeout 60 \
+  --json \
+  --verbose
 ```
 
 Script behavior:
@@ -84,7 +86,9 @@ Script behavior:
 - Treats `COMPLETED`/`SUCCESS` as success terminal (case-insensitive)
 - Treats `FAILED`/`ERROR` as failure terminal
 - Stops polling immediately on terminal status
+- Prints `task_id` to stderr when running in observable mode
 - Prints `ppt_url` on success (fallback: `live_doc_url`)
+- Includes richer error details such as `code` / `request_id` when Felo returns them
 
 Optional debug output:
 
