@@ -67,11 +67,11 @@ stdout 會輸出 JSON，例如：
 
 1. 當使用者要從提示詞直接生成設計稿、介面草圖、Landing Page、區塊設計或對應 HTML 時，優先使用此技能。
 2. 確認環境中已有 `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`。
-3. 執行：
+3. 執行時加上 `--output-dir artifacts/{issue-comment-id}`，讓輸出直接進入正確路徑：
    ```sh
-   node .agents/skills/google-stitch/scripts/generate.js --prompt "<user prompt>"
+   node .agents/skills/google-stitch/scripts/generate.js --prompt "<user prompt>" --output-dir artifacts/{issue-comment-id}
    ```
-4. 若使用者有指定尺寸、比例、模型或輸出位置，分別加上：
+4. 若使用者有指定尺寸、比例、模型，分別加上：
    - `--aspect-ratio`
    - `--image-size`
    - `--model`

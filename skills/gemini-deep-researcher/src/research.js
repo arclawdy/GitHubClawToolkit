@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 const POLL_INTERVAL_MS = 5000;
-const MAX_POLL_TIME_MS = 600000; // 10 minutes
+const MAX_POLL_TIME_MS = 1800000; // 30 minutes
 
 function buildPrompt(topic) {
   return `請針對以下主題進行深度研究，並產出一份結構完整的繁體中文（zh-TW）研究報告。
@@ -73,7 +73,7 @@ async function main() {
   // 1. Start the background research
   console.error("正在啟動深度研究...");
   const initialResponse = await client.interactions.create({
-    agent: "deep-research",
+    agent: "deep-research-pro-preview-12-2025",
     input: prompt,
     background: true,
   });
@@ -81,7 +81,7 @@ async function main() {
   const interactionId = initialResponse.id;
   console.error(`研究任務已建立（ID: ${interactionId}），等待完成...`);
 
-  // 2. Poll until complete
+  // 2. Poll until complete (no timeout — keep going as long as not failed)
   let elapsed = 0;
 
   while (elapsed < MAX_POLL_TIME_MS) {
@@ -91,10 +91,16 @@ async function main() {
     const status = await client.interactions.get(interactionId);
 
     if (status.status === "completed") {
-      if (status.output) {
-        for (const part of status.output) {
-          if (part.type === "text" && part.text) {
-            process.stdout.write(part.text);
+      const outputs = status.outputs ?? status.output;
+      if (outputs && outputs.length > 0) {
+        const last = outputs[outputs.length - 1];
+        if (last.text) {
+          process.stdout.write(last.text);
+        } else {
+          for (const part of outputs) {
+            if (part.type === "text" && part.text) {
+              process.stdout.write(part.text);
+            }
           }
         }
         process.stdout.write("\n");
@@ -115,7 +121,7 @@ async function main() {
   }
 
   throw new Error(
-    `研究任務逾時（超過 ${MAX_POLL_TIME_MS / 60000} 分鐘）`,
+    `研究任務逾時（超過 ${MAX_POLL_TIME_MS / 60000} 分鐘），任務 ID: ${interactionId}`,
   );
 }
 

@@ -20,5 +20,11 @@ if [ -n "$browser_path" ]; then
   printf 'AGENT_BROWSER_EXECUTABLE_PATH=%s\n' "$browser_path" >> "$GITHUB_ENV"
   export AGENT_BROWSER_EXECUTABLE_PATH="$browser_path"
 else
-  agent-browser install
+  if [ "$(uname)" = "Linux" ]; then
+    # Ubuntu 24.04+ renamed libasound2 → libasound2t64; pre-install to avoid agent-browser install failure
+    sudo apt-get install -y libasound2t64 2>/dev/null || true
+    agent-browser install --with-deps
+  else
+    agent-browser install
+  fi
 fi

@@ -181,6 +181,11 @@ Fetched content is in `data.content`; structure depends on `output_format`.
 - If response content is not a string, script prints JSON.
 - Use `--json` when user needs metadata and full response object.
 
+## Language
+
+- **預設輸出語言為繁體中文（zh-TW）**。除非使用者明確指定其他語言，否則所有摘要、整理、說明等 AI 產出的文字，一律使用繁體中文輸出。
+- 網頁原始內容（如簡體中文頁面）維持原文擷取，但 AI 的整理、摘要與說明部分仍須使用繁體中文。
+
 Error response format:
 
 ```markdown
@@ -192,6 +197,11 @@ Error response format:
 ## Important Notes
 
 - ⚠️ **路徑安全**：skill 腳本位於 repo root 的 `.agents/skills/` 下。若 cwd 不在 repo root，先執行 `git rev-parse --show-toplevel` 取得路徑再 `cd`。禁止用 `$(...)` 語法。
+- ⚠️ **指令安全**：Copilot CLI 的安全過濾器會封鎖含有特定 shell 語法的指令，執行時**禁止**加入以下任何寫法，否則指令會被直接擋下：
+  - `set -e`、`set -u`、`set -o`、`set -euo pipefail` 等 set 指令
+  - `${var@P}`、`${!var}` 等參數展開語法
+  - 巢狀的 `$(...)` 指令替換
+  - 正確寫法：直接執行 `cd` 與 `node` 指令，不要包在 shell 腳本控制流程內
 - Always require URL before running.
 - Validate enum values:
   - `output_format`: `html`, `markdown`, `text`

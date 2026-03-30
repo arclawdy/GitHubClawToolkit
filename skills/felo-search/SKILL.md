@@ -217,6 +217,7 @@ To use this skill, you need to set up your Felo API Key:
 - ⚠️ **路徑安全**：skill 腳本位於 repo root 的 `.agents/skills/` 下。若 cwd 不在 repo root，先執行 `git rev-parse --show-toplevel` 取得路徑再 `cd`。禁止用 `$(...)` 語法。
 - This skill should be used for any question requiring current information
 - Execute immediately using the Bash tool - don't just describe what you would do
+- **預設輸出語言為繁體中文（zh-TW）**。除非使用者明確指定其他語言，否則所有摘要、整理、說明等 AI 產出的文字，一律使用繁體中文輸出。
 - Multi-language support: Fully supports Simplified Chinese, Traditional Chinese (Taiwan), Japanese, and English
 - Handle special characters properly: Use the search script which handles JSON escaping via sed
 - Parse JSON response: Extract answer and query_analysis fields
