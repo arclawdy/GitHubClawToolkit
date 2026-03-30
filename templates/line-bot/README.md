@@ -3,7 +3,7 @@
 這個目錄提供一個 GitHub Actions workflow：`install-line-bot.yml`。  
 它的用途是把 `duotify/GitHubClawSkills` 裡的 `workers/line-bot` 專案，透過 Bun 建置後部署到 Cloudflare Workers，並同步 LINE Bot 所需的 secrets。
 
-## descript
+## Description
 
 `line-bot` 主要在做三件事：
 
