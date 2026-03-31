@@ -1,0 +1,11 @@
+{
+  "name": "Gemini Nanobanana",
+  "tagline": "Gemini 圖片生成範本，透過 Issue 觸發 AI 繪圖工作流程",
+  "description": "Gemini Nanobanana 範本提供完整的 GitHub Actions 工作流程，透過 Issue 觸發 Gemini 模型進行 AI 圖片生成。支援自訂模型名稱，產出結果自動存入 artifacts 目錄，適合需要批次或自動化圖片生成的情境。",
+  "category": "framework",
+  "tags": ["gemini", "nanobanana", "image-generation", "template", "workflow"],
+  "version": "1.0.0",
+  "support_url": "https://github.com/duotify/GitHubClawToolkit/issues",
+  "homepage": "https://learn.duotify.com/courses/githubclaw",
+  "requireEnv": ["GEMINI_API_KEY"]
+}

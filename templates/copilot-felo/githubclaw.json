@@ -1,0 +1,11 @@
+{
+  "name": "Copilot Felo",
+  "tagline": "整合 Felo API 的 Copilot Agent 範本，支援搜尋與內容擷取",
+  "description": "Copilot Felo 在 Copilot Agent 框架基礎上整合 Felo API，讓 Agent 可使用 Felo 系列技能（搜尋、網頁擷取、簡報生成等）。工作流程已預先設定 FELO_API_KEY 與 COPILOT_GITHUB_TOKEN 環境變數，適合以 GitHub Copilot 驅動的自動化情境。",
+  "category": "framework",
+  "tags": ["copilot", "felo", "template", "agent", "search"],
+  "version": "1.0.0",
+  "support_url": "https://github.com/duotify/GitHubClawToolkit/issues",
+  "homepage": "https://learn.duotify.com/courses/githubclaw",
+  "requireEnv": ["FELO_API_KEY"]
+}
