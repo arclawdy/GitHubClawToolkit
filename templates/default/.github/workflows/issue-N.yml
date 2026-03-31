@@ -88,6 +88,7 @@ jobs:
         with:
           node-version: 22
 
+
       - name: 狀態更新處理
         if: ${{ (github.event_name == 'repository_dispatch' && github.event.client_payload.event_data == 'StatusUpdate') || inputs.event_data == 'StatusUpdate' }}
         shell: bash
@@ -103,30 +104,12 @@ jobs:
           COPILOT_HOME: ".copilot"
         run: |
           mkdir -p "artifacts/${{ env.COMMENT_ID }}"
-          PROMPT_FILE="artifacts/${{ env.COMMENT_ID }}/copilot-prompt.md"
-          {
-            echo "目前 issue-comment-id 為： ${{ env.COMMENT_ID }}"
-            echo
-            echo "以下是完整 issue 上下文："
-            echo
-            cat issue.md
-          } > "$PROMPT_FILE"
-
-          if [ -n "${{ env.USER_COMMENT_ID }}" ] && [ -f "artifacts/${{ env.USER_COMMENT_ID }}/user.md" ]; then
-            {
-              echo
-              echo "---"
-              echo
-              echo "以下是本次觸發的使用者原始訊息（artifacts/${{ env.USER_COMMENT_ID }}/user.md）："
-              echo
-              cat "artifacts/${{ env.USER_COMMENT_ID }}/user.md"
-            } >> "$PROMPT_FILE"
-          fi
-
-          npx -y @github/copilot@${{ vars.COPILOT_CLI_VERSION || '1.0.14' }} -p "$(cat "$PROMPT_FILE")" \
-          --yolo --stream off --continue --output-format json \
-          > artifacts/${{ env.COMMENT_ID }}/output.jsonl \
-          2> artifacts/${{ env.COMMENT_ID }}/error.log
+          
+          npx -y @github/copilot@${{ vars.COPILOT_CLI_VERSION || '1.0.14' }} \
+            -p "{issue-comment-id}=${{ env.COMMENT_ID }}\n\n$(cat "artifacts/${{ env.USER_COMMENT_ID }}/user.md")" \
+            --yolo --stream off --continue --output-format json \
+            > artifacts/${{ env.COMMENT_ID }}/output.jsonl \
+            2> artifacts/${{ env.COMMENT_ID }}/error.log
 
       - name: 推送結果
         if: always()
