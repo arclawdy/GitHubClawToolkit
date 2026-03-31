@@ -118,7 +118,6 @@ async function main(): Promise<void> {
     model,
     config: {
       systemInstruction: systemPrompt,
-      tools: [{ googleSearch: {} }],
     },
     contents: [{
       role: 'user',

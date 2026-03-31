@@ -52,7 +52,6 @@ env:
   COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.comment_id || inputs.comment_id }}"
   USER_COMMENT_ID: "${{ github.event_name == 'repository_dispatch' && github.event.client_payload.user_comment_id || inputs.user_comment_id }}"
   ISSUE_BRANCH: "issue-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.issue_number || inputs.issue_number }}"
-  ISSUE_WORKTREE: "./issue-worktree"
   BRAIN_META: '<!-- githubclaw-brain-result: {"source":"githubclaw-worker-brain"} -->'
   VERTEXAI_API_KEY: "${{ secrets.VERTEXAI_API_KEY }}"
 
@@ -62,10 +61,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout main branch
+      - name: Checkout issue branch
         uses: actions/checkout@v4
         with:
-          ref: "main"
+          ref: "${{ env.ISSUE_BRANCH }}"
           fetch-depth: 1
           token: "${{ github.token }}"
 
@@ -106,8 +105,8 @@ jobs:
           set -euo pipefail
 
           prompt_comment_id="${USER_COMMENT_ID:-${COMMENT_ID}}"
-          PROMPT_FILE="${ISSUE_WORKTREE}/artifacts/${prompt_comment_id}/user.md"
-          context_jsonl_file="$(find "${ISSUE_WORKTREE}" -maxdepth 1 -type f -name '*.jsonl' | head -n 1 || true)"
+          PROMPT_FILE="./artifacts/${prompt_comment_id}/user.md"
+          context_jsonl_file="$(find . -maxdepth 1 -type f -name '*.jsonl' | head -n 1 || true)"
 
           if [[ ! -f "${PROMPT_FILE}" ]]; then
             echo "::error::${PROMPT_FILE} 不存在。請確認 issue branch 已建立 artifacts/${prompt_comment_id}/user.md。"
