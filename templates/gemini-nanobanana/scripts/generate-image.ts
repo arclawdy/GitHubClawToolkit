@@ -10,7 +10,6 @@ type PlannedImageConfig = {
   imageConfig: {
     aspectRatio: string;
     imageSize: '512' | '1K' | '2K' | '4K';
-    personGeneration?: 'PERSON_GENERATION_UNSPECIFIED' | 'ALLOW_ALL' | 'ALLOW_ADULT' | 'ALLOW_NONE';
   };
 };
 
@@ -35,11 +34,6 @@ const IMAGE_CONFIG_SCHEMA = {
         imageSize: {
           type: 'string',
           enum: ['512', '1K', '2K', '4K'],
-        },
-        personGeneration: {
-          type: 'string',
-          enum: ['PERSON_GENERATION_UNSPECIFIED', 'ALLOW_ALL', 'ALLOW_ADULT', 'ALLOW_NONE'],
-          description: '控制是否允許生成人物；若不需要特別指定可省略此欄位。',
         },
       },
     },
@@ -399,7 +393,6 @@ function parsePlannedImageConfig(responseText: string | undefined): PlannedImage
   const finalPrompt = normalizeText(parsed?.finalPrompt);
   const aspectRatio = normalizeText(parsed?.imageConfig?.aspectRatio);
   const imageSize = normalizeText(parsed?.imageConfig?.imageSize) as PlannedImageConfig['imageConfig']['imageSize'];
-  const personGeneration = normalizeText(parsed?.imageConfig?.personGeneration) as PlannedImageConfig['imageConfig']['personGeneration'] | '';
 
   if (!finalPrompt) throw new Error('structured output 缺少 finalPrompt。');
   if (!aspectRatio) throw new Error('structured output 缺少 imageConfig.aspectRatio。');
@@ -410,7 +403,6 @@ function parsePlannedImageConfig(responseText: string | undefined): PlannedImage
     imageConfig: {
       aspectRatio,
       imageSize,
-      ...(personGeneration && personGeneration !== 'PERSON_GENERATION_UNSPECIFIED' ? { personGeneration } : {}),
     },
   };
 }
