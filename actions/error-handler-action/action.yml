@@ -28,6 +28,10 @@ inputs:
     description: 當輸出檔中偵測到 Google 服務回傳 429（配額超限）時寫入 result_file 的訊息
     required: false
     default: "很抱歉，這個任務沒有順利完成。\n\n**發生了什麼事？**\nGoogle API 回傳了 429（Too Many Requests）。這表示目前的 API 金鑰請求次數已達到 Google 設定的配額上限，Google 暫時拒絕了這次請求。\n\n**您現在可以：**\n- 等幾分鐘後重新指派這個 issue，讓任務重跑一次\n- 若持續發生，請通知開發人員至 Google Cloud Console 檢查配額用量，或考慮升級 API 方案"
+  openai_permission_message:
+    description: 當輸出檔中偵測到 OpenAI WebSocket 連線失敗（HTTP 500）時寫入 result_file 的訊息
+    required: false
+    default: "很抱歉，這個任務沒有順利完成。\n\n**發生了什麼事？**\n代理程式嘗試連線至 OpenAI API（`wss://api.openai.com/v1/responses`）時收到 HTTP 500 錯誤，無法建立 WebSocket 連線。這通常表示：\n- 使用的 OpenAI API 金鑰沒有存取 **Codex / Responses API** 的權限\n- 帳號尚未加入 OpenAI 相關方案，或金鑰已過期、遭停用\n\n**您現在可以：**\n- 請通知開發人員確認 `OPENAI_API_KEY` 是否具備 Responses API 的存取權限\n- 至 OpenAI 平台確認帳號狀態與 API 方案，重新產生金鑰後再試一次"
 
 runs:
   using: composite
@@ -42,6 +46,7 @@ runs:
         MESSAGE_SUFFIX: ${{ inputs.message_suffix }}
         NO_AUTH_MESSAGE: ${{ inputs.no_auth_message }}
         GOOGLE_QUOTA_EXCEEDED_MESSAGE: ${{ inputs.google_quota_exceeded_message }}
+        OPENAI_PERMISSION_MESSAGE: ${{ inputs.openai_permission_message }}
       run: |
         set -euo pipefail
 
@@ -50,21 +55,46 @@ runs:
         node -e '
           const fs = require("fs");
 
+          const log = (msg) => process.stdout.write(msg + "\n");
+
           const outputFile = process.env.OUTPUT_FILE;
           const resultFile = process.env.RESULT_FILE;
           const missingSessionErrorMessage = process.env.MISSING_SESSION_ERROR_MESSAGE;
           const messagePrefix = process.env.MESSAGE_PREFIX;
           const messageSuffix = process.env.MESSAGE_SUFFIX;
 
-          const content = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, "utf8") : "";
+          log("::group::📋 error-handler-action 執行資訊");
+          log(`讀取輸出檔：${outputFile}`);
+
+          const fileExists = fs.existsSync(outputFile);
+          log(`輸出檔存在：${fileExists}`);
+
+          const content = fileExists ? fs.readFileSync(outputFile, "utf8") : "";
+          log(`輸出檔大小：${content.length} bytes`);
+          log("::endgroup::");
+
+          if (
+            content.includes("responses_websocket") &&
+            content.includes("failed to connect to websocket") &&
+            content.includes("500")
+          ) {
+            log("::error::偵測到 OpenAI WebSocket HTTP 500 連線失敗，將寫入 OpenAI 權限錯誤訊息");
+            fs.writeFileSync(resultFile, `${process.env.OPENAI_PERMISSION_MESSAGE}\n`);
+            log(`結果已寫入：${resultFile}`);
+            process.exit(0);
+          }
 
           if (content.includes("429")) {
+            log("::warning::偵測到 Google API 429（配額超限），將寫入 quota exceeded 訊息");
             fs.writeFileSync(resultFile, `${process.env.GOOGLE_QUOTA_EXCEEDED_MESSAGE}\n`);
+            log(`結果已寫入：${resultFile}`);
             process.exit(0);
           }
 
           if (content.includes("Error: No authentication information found.")) {
+            log("::error::偵測到認證失敗（No authentication information found），將寫入 no-auth 訊息");
             fs.writeFileSync(resultFile, `${process.env.NO_AUTH_MESSAGE}\n`);
+            log(`結果已寫入：${resultFile}`);
             process.exit(0);
           }
 
@@ -80,10 +110,19 @@ runs:
             } catch {}
           }
 
-          fs.writeFileSync(
-            resultFile,
-            message
-              ? `${messagePrefix}\n\n${message}\n\n${messageSuffix}\n`
-              : `${missingSessionErrorMessage}\n`
-          );
+          if (message) {
+            log("::warning::從 JSONL 輸出擷取到 session.error 訊息，將寫入錯誤摘要");
+            log("::group::📄 session.error 訊息內容");
+            log(message);
+            log("::endgroup::");
+          } else {
+            log("::notice::未在輸出中找到 session.error 訊息，將使用 fallback 訊息");
+          }
+
+          const resultContent = message
+            ? `${messagePrefix}\n\n${message}\n\n${messageSuffix}\n`
+            : `${missingSessionErrorMessage}\n`;
+
+          fs.writeFileSync(resultFile, resultContent);
+          log(`結果已寫入：${resultFile}`);
         '
